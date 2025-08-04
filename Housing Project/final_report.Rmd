@@ -1,0 +1,367 @@
+---
+title: "Final Project Report"
+subtitle: "Data Science 3 with R (STAT 301-3)"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    highlight: "tango"
+---
+<!-- Set global options for R code chunks -->
+```{r global-settings, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, message = FALSE
+)
+```
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+library(tidyverse)
+library(skimr)
+library(patchwork)
+library(kableExtra)
+library(tidymodels)
+library(stacks)
+library(vip)
+library(flextable)
+library(officer)
+```
+
+
+# Introduction
+\ 
+
+On the surface, Evanston IL comes across as a model town. Situated just north of Chicago, Evanston is often considered to be a part of the prestigious North Shore region stretching north from Chicago along the coast of Lake Michigan. The North Shore, with its constituent municipalities of Winnetka, Highland Park, and Glencoe, is often considered the wealthiest and most desirable region of the Chicagoland area. On the surface level, Evanston appears to be just another one of these prestigious North Shore suburban municipalities. However, while Evanston does border the North Shore town of Wilmette to its north, it also borders Chicago to its south. Evanston is highly influenced by Rogers Park, a lower-middle income neighborhood on the northern edge of Chicago. Rogers Park is distinct for being the most racially diverse community area of Chicago, with around 40% of occupants identifying as White, 25% as Black, and 23% as Latino. Evanston, as a small city, spans from Rogers Park on its south to upper-income predominantly White Wilmette to its north. On top of this, Evanston has a number of other features which make it distinct from other North Shore municipalities. To start, Evanston is the home of Northwestern University, a major research institution, and has a large student population as a result of this. Additionally, Central Evanston is home to a large middle-income Black community, stretching almost from the founding of Evanston itself due to the city's relative racial tolerance and proximity to the higher paying service jobs of the wealthy North Shore communities. For these reasons, Evanston distinguishes itself as an interesting case study of the nature of real estate markets in the segregated Chicagoland area. Understanding this, I want to investigate Evanston's housing market and answer the following question: can we quantify the leading factors that contribute to the price of a house in Evanston and analyze the societal implications of these factors?
+\ 
+
+The focus of my research will utilize the housing prices data set of Evanston. This data was found on the Evanston Data website (https://data.cityofevanston.org/dataset/Cook-County-Assessor-s-Assessment-Data/4vx4-73z4). The original data set details all housing prices for all of Cook county. With limited data manipulation on the website, it was possible to collect observations only related to Evanston. The Evanston housing data set contains information on 61 different aspects of each house in Evanston. Information from the size and cost of each house to the material used in the construction of each house's garage is available.
+
+
+```{r,message=FALSE,echo=FALSE,warning=FALSE}
+load("data/processed/Housing2.csv")
+
+tidy(lm(house_price ~ ., Housing)) %>% 
+  filter(!is.na(estimate),
+         term != "(Intercept)") %>% 
+  arrange(p.value) %>% 
+  mutate_if(is.numeric, ~format(.x, scientific = T, digits = 3)) %>%
+  rename(Variable = term,
+         Estimate = estimate,
+         `Std Error` = std.error,
+         Statistic = statistic,
+         `P Value` = p.value) %>% 
+  flextable() %>% 
+  set_caption("Table 1: Linear Model with Variable Significance") %>% 
+  hline(i = 24, border = fp_border(width = 2)) %>% 
+  colformat_double(j = 5) %>%
+  autofit()
+```
+\ 
+
+Table 1 shows the results of an initial linear model predicting home price, with the results ordered by P Value. These results are then used to get an initial understanding of which variables are correlated with home price through the P Value column. The lower the P Value, the higher the odds are that the variable effects home price. As indicated by the horizontal line, 12 of the variables have a P Value greater than .05, meaning these variables will need to be discarded from the analysis as they aren't shown to be significant in predicting home price. This allows us to cut down the dimensions of the model.
+
+
+## Univariate Analysis
+```{r,message=FALSE,echo=FALSE,warning=FALSE}
+load("data/processed/house.csv")
+```
+
+### House Price
+```{r,message=FALSE,echo=FALSE,warning=FALSE}
+ggplot(house) +
+  geom_histogram(aes(house_price)) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(x = "House Price",
+       y = "",
+       title = "Distribution of Home Prices") +
+  scale_x_continuous(labels = scales::dollar, expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) + 
+  theme_classic()
+
+```
+\ 
+
+From the distribution shown above, home prices in Evanston are skewed to the right. This indicates that the there are some houses in Evanston that drive up the average price of a home. This makes sense due to the landscape of Evanston and the demographics that live here. Looking at the boxplot above we can also see that there are a quite few number of outliers in the data. It will be important to remember this for the analysis. 
+
+### Longitude
+```{r,message=FALSE,echo=FALSE,warning=FALSE}
+ggplot(house) +
+  geom_histogram(aes(longitude)) +
+  theme_classic() + 
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) + 
+  labs(x = "Longitude", y = "", title = "Distribution of ")
+
+```
+\ 
+
+Although the distribution is not perfectly normal, it is good enough to indicate that there is a nice selection of data from all areas of Evanston. The above distributions indicate that there is more housing closer to the east of Evanston. However, this is not exactly true because the peak of the distributions falls around the -87.69 mark which lines up with just west of the train tracks. The area past the train tracks is the redlined area of Evanston which has smaller housing developments. Additionally, it is important to note that the housing drastically shrinks when approaching the lake. Prior knowledge makes me think that this is not only due to the location of the lake, but also the fact that most houses closer to the lake are larger, taking up more space.Additionally, the distributions above suggest there are no heavy outliers in the data. 
+
+
+### Latitude
+```{r,message=FALSE,echo=FALSE,warning=FALSE}
+ggplot(house) +
+  geom_histogram(aes(latitude)) +
+  theme_classic() + 
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) + 
+  labs(x = "Latitude", y = "")
+
+```
+\ 
+
+The distribution of latitude is bimodal with an interesting split in the data. The distribution suggests that there is more housing available in the South and North of Evanston. Although there is housing in central Evanston, there is a dip in housing because the center of Evanston is the downtown and industrial areas of Evanston preventing housing availability. The distributions in the data above suggest there aren't any serious outliers in the data. 
+
+
+### Land Size
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(house) + 
+  geom_histogram(aes(land_square_feet)) + 
+  theme_classic() + 
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) + 
+  labs(x = "Square footage of the lot",
+       y = "")
+
+```
+\ 
+
+This distribution is right skewed and very similar to the the shape of the house price distribution. I believe this suggests some correlation between the two variables, and is worth more investigation into the reason for the similarities. I believe the distribution of this variable is due to the different housing prices. 
+
+### Age
+```{r,message=FALSE,echo=FALSE,warning=FALSE}
+
+ggplot(house,aes(age)) + 
+  geom_histogram() + 
+  scale_x_continuous(breaks = seq(0,200,20), expand = c(0,0))+
+  theme_classic() + 
+  scale_y_continuous(expand = c(0,0)) + 
+  labs(title = "Distribution of the age of houses in Evanston",
+       y = "",
+       x = "Age of House")
+
+```
+\  
+
+When looking at the distribution of the ages of the houses, it's clear that the data is bi-modal with the two modes hovering around 60 and 100 years. This indicates that Evanston was largely developed in two spurts: a large amount of houses were constructed in the period from 1900-1930 (houses 90-120 years old), and a large number of houses were constructed from 1950-1970 (houses 50-70 years old). The period from 1930-1950, marked by the Great Depression and World War 2, saw relatively few homes being constructed. After the 1970s very few houses were built, likely due to all buildable space being developed, with a small bump in the recent few years as homes have been renovated and reconstructed.
+
+## Bivariate Analysis with response variable
+### House Price vs Age
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+house %>% 
+  mutate(age_dist = factor(age%/%20*20)) %>% 
+  ggplot(aes(age_dist, house_price, color = age_dist, group = age_dist)) + 
+  geom_boxplot(varwidth = T)+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal() + 
+  theme(legend.position = "none") +
+  labs(x = "Age of House", y = "Price of House",title = "Price of House vs Age of House")
+```
+\ 
+
+
+
+The comparison of a house's age and selling price is interesting because it might be thought that the oldest houses in Evanston would be worth the most. These houses would not only be the biggest, but also be located closest to the shoreline. Although some of these preconceived notions are true, the correlation between these two variables was not as high as expected. 
+
+
+
+### House Price vs Longitude
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+house %>% 
+  mutate(long_dist = factor(longitude%/%0.01*0.01)) %>% 
+  ggplot(aes(long_dist, house_price, color = long_dist, group = long_dist)) + 
+  geom_boxplot(varwidth = T)+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal() + 
+  theme(legend.position = "none") +
+  labs(x = "Longitude of House", y = "Price of House",title = "Price of House vs Longitude of House")
+
+
+```
+\ 
+
+Although this relationship was expected, it is important because it give support to our preconceived notions about the Evanston housing market. This graph indicates that the further east a person lives, the more valuable there house and property. Whether this is because of land size or the lake front, is not clear.
+
+### House Price vs Latitude
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+house %>% 
+  mutate(lat_dist = factor(latitude%/%0.01*0.01)) %>% 
+  ggplot(aes(lat_dist, house_price, color = lat_dist, group = lat_dist)) + 
+  geom_boxplot(varwidth = T)+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal() + 
+  theme(legend.position = "none") +
+  labs(x = "Latitude of House", y = "Price of House",title = "Price of House vs Latitude of House")
+```
+\ 
+
+This graphic shows that the further north a person lives, the more expensive their property. An important feature to note is that as one heads further north in Evanston towards the Wilmette border, the population becomes wealthier and less racially diverse.
+
+### House Price vs Square Footage of the Lot
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+house %>% 
+  filter(land_square_feet < 20000) %>% 
+  mutate(lsf_dist = factor(scales::comma(land_square_feet%/%2000*2000), levels = scales::comma(0:2000:18000))) %>% 
+  ggplot(aes(lsf_dist, house_price, color = lsf_dist, group = lsf_dist)) + 
+  geom_boxplot(varwidth = T)+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal() + 
+  theme(legend.position = "none") +
+  labs(x = "Square Footage of Lot", y = "Price of House")
+```
+\
+This graph shows the price distribution of homes by the square foot of the lot of land they reside on. The width of the boxplot relates to the number of observations in that category. As one might expect, the larger the lot, the more expensive the home. One thing to note, though, is the number of outliers in the 4,000 through 10,000 sqft categories.
+
+
+### House Price vs Square Footage of the House
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+house %>% 
+  filter(building_square_feet < 7500, building_square_feet > 500) %>% 
+  mutate(bsf_dist = factor(scales::comma(building_square_feet%/%500*500), levels = scales::comma(0:500:7000))) %>% 
+  ggplot(aes(bsf_dist, house_price, color = bsf_dist, group = bsf_dist)) + 
+  geom_boxplot(varwidth = T)+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal() + 
+  theme(legend.position = "none") +
+  labs(x = "Square Footage of House", y = "Price of House")
+```
+\
+This graph shows the price distribution of homes by the square foot of the home. The width of the boxplot relates to the number of observations in that category. As one might expect, the larger the home, the more expensive the home. One thing to note, though, is the number of outliers in the lowest category of 500 square feet. This is likely due to including condominiums in the data.
+
+
+
+# Models
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+load("Objects/BT_tuned.rda")
+load("Objects/EN_tuned.rda")
+load("Objects/KN_tuned.rda")
+load("Objects/MARS_tuned.rda")
+load("Objects/RF_tuned.rda")
+load("Objects/SLNN_tuned.rda")
+load("Objects/SVMrbf_tuned.rda")
+load("Objects/EN_tuned.rda")
+load("model_info/house_model_st.rda")
+load("Objects/nl_res.rda")
+
+house_model_st <-
+  house_model_st %>%
+  fit_members()
+```
+
+
+## Initial Models
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+show_best(BT_tuned, metric = "rmse") %>% kbl(caption = " Boosted Tree Model Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+show_best(RF_tuned, metric = "rmse") %>% kbl(caption = " Random Forest Model Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+show_best(SLNN_tuned, metric = "rmse") %>% kbl(caption = "Single Layer Neural Network Model Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+show_best(SVMrbf_tuned, metric = "rmse")%>% kbl(caption = "Support Vector Machine (rbf) Model Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+show_best(MARS_tuned, metric = "rmse") %>% kbl(caption = "MARS Model Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+show_best(KN_tuned, metric = "rmse")  %>% kbl(caption = "K Nearest Neighbors Model Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+show_best(EN_tuned, metric = "rmse") %>% kbl(caption = "Elastic Net Model Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+show_best(nl_res, metric = "rmse")  %>% kbl(caption = "Null Model Model Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+\ 
+
+
+## Ensemble Model
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+theme_set(theme_bw())
+autoplot(house_model_st)
+autoplot(house_model_st, type = "members")
+autoplot(house_model_st, type = "weights")
+```
+\ 
+
+7 models were tested initially. From the results above, it was found that the Boosted Tree, the Random Forest, and the SVM RBF models provided the lowest RMSE when using cross fold validation with 5 folds and 3 repeats. Using this information, an ensemble model of utilizing a Boosted Tree, Random Forest, and SVM RBF model was constructed. When comparing the RMSE from the cross-fold set, it was found that the RMSE of the ensemble model was 1000 units lower than the Random Forest model which performed the best out of all the stand alone models. For this reason, I selected the ensemble model to be tested against the testing data. Overall, in comparison to the null model, the model decreases the RMSE by roughly 180,000 or 200% when comparing the results using cross-fold validation. Additionally, it seems that the high R^2 value corroborated the model's ability to accurately portray Evanston's housing market. Although R^2 is not the best metric to evaluate models, the high R^2 value speaks well to the applicability of the model. Lastly, the ensemble models stacking coefficients are displayed in the final graphic. This shows that svm was used the most, then the random forest, then the boosted tree. This was interesting because the svm performed the worst during the process of cross fold validation. Lastly, all of the models and examples of cross fold validation in this section were run on separate tuning scripts and are available in the repo of this submission. Generally, all of the models compared used the same folds and repeats as well as the same recipe. 
+
+\ 
+
+In the initial process of deciding the finalized model I stratified the data on the variable property class and created two separate recipes. The first recipe, which was used in the best model, was a more general model that only used three step functions: step_dummy, step_nzv, step_interact and step_normalize. All factor variables were dummified to capture the main effects of each level of the factor to gain insight into Evanston's housing market. I used step_nzv to get rid of any features with little to no variance. This is a good method to get rid of variables that did not have enough variance to help the model, but also drag down the quality of the model because it would increase the models dimensions. The step_interact function was used for land and building size because it seemed that there was an obvious correlation between the size of a building and the lot of land. Lastly, the step_normalize function was used to ensure the dataframe contains data directly related to the house_price, each data field contains only one data element, and to remove redundant data. The second data frame uses less variables that were hand picked using intuition and the variable importance graphs generated from the vip package using the initial models. These models are seen in the scripts rf_model_2,bt_model_2, and svm_rbf_model_2 scripts but were not directly included in the final report because the models did not outperform the initial models. 
+
+# Feature Importance in Ensemble Model
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+load("Objects/rf_results.rda")
+rf_results %>%
+  extract_fit_parsnip() %>%
+  vip(num_features = 20) + 
+  labs(title = "Random forest variable importance") 
+
+load("Objects/BT_results.rda")
+BT_results %>%
+  extract_fit_parsnip() %>%
+  vip(num_features = 20) + 
+  labs(title = "BT variable importance") 
+```
+\ 
+
+I was unsure how to find the feature importance for ensemble methods so I did feature importance separately for each model in the ensemble model besides the SVM RBF because there is no way to do it in R using the vip package. However, I feel that having the importance for both the RF and BT models will be enough to obtain valuable insight. For example, both models have the same four variables as the most important in the exact same order. These variables: land size, building size, longitude, and latitude, illustrate a lot about Evanston when compared with what we know about Evanston. For instance, the closer a homeowner is to the Lake (the East in latitude), the more expensive homes tend to be because lake front property is worth more in Evanston. This can be seen with one of the wealthiest errors in Evanston is just North and east of Northwestern's campus. Furthermore, the west side of Evanston passed the train tracks was the red lined ward of Evanston. This in combination with the east side of Evanston's proximity to the water explains why latitude is an important feature when predicting home value. Similarly, the North side of Evanston is considered a wealthy area because of the historical significance of the area. On the other hand, the south of Evanston that borders Rogers Park is not as well off of an area. This vast difference is likely responsible for the importance of longitude in home value. Lastly, both land size and building size make sense as important variables as most people will pay more for more space. 
+
+# Exploring the Best Model
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+load("model_info/house_test.rda")
+load("model_info/nl_predicts.rda")
+
+ggplot(house_test) +
+  aes(x = house_price, 
+      y = .pred) +
+  geom_point() + 
+  geom_abline(color = "red") +
+  coord_obs_pred()
+
+member_preds <- 
+  house_test %>%
+  select(house_price) %>%
+  bind_cols(predict(house_model_st, house_test, members = TRUE))
+
+map_dfr(member_preds, ~rmse_vec(.x, truth = member_preds$house_price, data = member_preds)) %>% 
+  pivot_longer(everything(), names_to = "Member", values_to = "RMSE") %>% 
+  kbl(caption = "Ensemble Model on Testing Data Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+```
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+rmse(nl_predicts,truth = house_price,estimate = .pred)  %>% kbl(caption = "Null Model on Testing Data Performances") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+\ 
+
+When comparing the model against the testing set, it was found that the RMSE decreased heavily. This is due to Cross Fold validation using only a subset of data compared to the model fit on the entire data set, which contributes to bias. Additionally, Cross validation averages the outputs of k fitted models in which k is the number of 'folds' in the cross validation, and there's obviously going to be overlaps between training sets, which contributes to the variance. Overall, the RMSE of the model on the testing set was satisfactory as the RMSE was 72412. When comparing this result to the null_model on the same testing data, the RMSE was found to be 261,419, The use of the ensemble model decreased the RMSE by nearly 190,000 units or 261%. Due to this enormous decrease in the RMSE the model performed above expectations, and gave us a lot of insight into the structure of Evanston's housing market.
+
+
+# Debrief and Next Steps
+## Conlusions from Analysis
+\  
+
+From the models performance and the variables that are seen as most important I can conclude that Evanston's house market is heavily affected by the size and location of the place a person lives. This conclusion is unsurprising, but when analyzing this answer at a closer level, we gain insight on Evanston's housing market and the implications it has on Evanston as a community. For example, from the EDA we know that the further east a home is the more expensive the home. Similarly, based on the variable importance charts/modelling, we know that the longitude of a house is very important when determining th price of a house. In combination with the knowledge about the redlined areas in the West of Evanston, we have strong foundation to support the hypothesis that race and the history of segregation plays a large part in Evanston's current housing market. Correspondingly, the conclusions drawn from the latitude variable can also support this idea. For instance, the north of Evanston houses a homogeneously white community, and the model and EDA support that this community contains the most expensive housing. The historical significance of this resides in the fact that these are some of the oldest and largest houses in Evanston which were specifically designed for and only lived in by white people when they were built due to red lining and segregation. Lastly, learning that size was the greatest indicator of a homes value was the projects greatest insight into Evanston's housing market. Although this seems obvious and is true for almost anywhere a person lives in America, this relationship is fascinating because it contradicts examples of when people move to New York in insanely small apartments just to be in the city. Additionally, the sociological implications of this finding suggests that people equate size to importance and wealth. Realistically, there is no other reason for people to buy excessively large houses without it being for the simple reason "because they can". Not only is it a show of their wealth, but it is also an easy way to artificially inflate housing prices, in turn, making living there inaccessible to anyone other than the extremely wealthy. Overall, this project indicates that Evanston's housing market is most influenced by the location, size, and amenities a certain house possess. On the surface this conclusion is not noteworthy. However, when considering historical characteristics of Evanston as a city, we begin to formulate support that the housing market artificially inflates itself to maintain Evanston at a certain level diversity and wealth. Furthermore, this comes off as hypocritical because Evanston often prides itself on its diversity, but when examined closely we see forms of de facto segregation through Evanston's housing market. These relationships are correlational, but further analysis is necessary to determine causality. 
+
+## Additional Information Needed
+\ 
+
+If there were better access to the average income of the area neighborhood, information on the schools corresponding to a neighborhood, and racial demographics we would be better able to assess the socioeconomic importance of the results. The access to this information will allow us to quantitatively assess how the history of segregation and zoning laws in Evanston has impacted Evanston's housing market. 
+
+## Why this is the best Model
+\ 
+
+The ensemble model was the best model not only because it had the lowest RMSE during the Cross Fold Validation process, but also because the model uses different aspects of models that are known to find and empower nonlinearities in the data. Furthermore, this model utilizes variables not only known to be significant in linear models, but also make logical sense when assessing housing prices. For example, when looking at the variable importance graphs, we see that the first four variables are exactly what one would expect to be the most impactful on a house's price in Evanston. The variables to follow, like number of baths and age of the house, also fall in line to what we understand from our schema on a house's price in Evanston. For instance, the age of a house in Evanston should be important in a house's price because many of the oldest homes in Evanston have the largest land lots and are historically significant.
+\ 
+
+Quantitatively, we know the ensemble model is the best model because of the low RMSE value. Although the Random Forest model performed almost as well as the ensemble model, the ensemble model had a lower RMSE by 1000 units. Additionally, using a tuning grid also gave confidence in the parameters used in the model as the tuning process offered statistical support to the selections made for the final model. 
+\ 
+
+## New Research Questions
+\ 
+
+Having completed our analysis on the housing market in Evanston, we conclude that factors of race, wealth, and the zoning laws that uphold these societal factors play a large role into the cost of a home in Evanston. Going forward, it would be interesting to investigate and quantify this relationship even further. We have the grounds to believe that the west side of Evanston, a historically black and red-lined area of Evanston, has cheaper housing while the richer North and East side of Evanston, historically wealthy and white, has practically inaccessible housing. However, we can only derive this relationship for correlation as we did not investigate this relationship using census data to quantitatively define how much of an effect race and wealth has on Evanston's housing market. For this reason, we would now like to answer this question: To what extent does race and wealth in Evanston impact the housing market? Furthermore, we would like to answer questions like are there opportunities to live in wealthier areas in Evanston without being apart of the 1%? Finally, we would like to use this research to answer the most important question, how can Evanston change zoning laws to promote desegregation and create a community that is actually as diverse as Evanstonians claim it to be. 
+
+
+
